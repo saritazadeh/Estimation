@@ -98,32 +98,29 @@ void QuadEstimatorEKF::UpdateFromIMU(V3F accel, V3F gyro)
   //ekfState(6) = ekfState(6) + dtIMU * gyro.z;	// yaw
   float p = pitchEst;
   float r = rollEst;
-  float y = ekfState(6);
-  float R[3][3];
-  R[0][0] = cos(y) * cos(p);
-  R[1][0] = sin(r) * sin(p) * sin(y) - cos(r) * sin(y);
-  R[2][0] = cos(r) * sin(p) * cos(y) + sin(r) * sin(y);
-  R[0][1] = cos(p) * sin(y);
-  R[1][1] = sin(r) * sin(p) * sin(y) + cos(r) * cos(y);
-  R[2][1] = cos(r) * sin(p) * sin(y) - sin(r) * cos(y);
-  R[0][2] = -sin(p);
-  R[1][2] = sin(r) * cos(p);
-  R[2][2] = cos(r) * cos(p);
+  //float y = ekfState(6);
+  Mat3x3F R;
+  R(0,0) = 1;
+  R(1,0)= 0;
+  R(2,0)= 0;
+  R(0,1) = sin(r) * tan(p);
+  R(1,1) = cos(r);
+  R(2,1) = sin(r) / cos(p);
+  R(0,2) = cos(r) * tan(p);
+  R(1,2) = -sin(r);
+  R(2,2) = cos(r) / cos(p);
   //calculate quaternion from Euler angles
-  Quaternion<float> qt = Quaternion<float>::FromEuler123_RPY(rollEst, pitchEst, ekfState(6));
+  //Quaternion<float> qt = Quaternion<float>::FromEuler123_RPY(rollEst, pitchEst, ekfState(6));
   //transfer angular rate to body frame
-  V3F gyro_b;
-  gyro_b.x = R[0][0] * gyro.x + R[0][1] * gyro.y + R[0][2] * gyro.z;
-  gyro_b.x = R[1][0] * gyro.x + R[1][1] * gyro.y + R[1][2] * gyro.z;
-  gyro_b.x = R[2][0] * gyro.x + R[2][1] * gyro.y + R[2][2] * gyro.z;
-    
-  Quaternion<float> dq = qt.IntegrateBodyRate(gyro_b, dtIMU);
+  V3F euler_dot = R * gyro;
   
-  Quaternion<float> q_bar_t = dq * qt;
+  //Quaternion<float> dq = qt.IntegrateBodyRate(gyro, dtIMU);
+  
+  //Quaternion<float> q_bar_t = dq * qt;
     
-  float predictedPitch = pitchEst + q_bar_t.Pitch() * dtIMU;
-  float predictedRoll = rollEst + q_bar_t.Roll() * dtIMU;
-  ekfState(6) = ekfState(6) + q_bar_t.Yaw() * dtIMU;
+  float predictedPitch = pitchEst + euler_dot.y * dtIMU;
+  float predictedRoll = rollEst + euler_dot.x * dtIMU;
+  ekfState(6) = ekfState(6) + euler_dot.z * dtIMU;
     
     
   // normalize yaw to -pi .. pi
@@ -190,8 +187,14 @@ VectorXf QuadEstimatorEKF::PredictState(VectorXf curState, float dt, V3F accel, 
   Quaternion<float> attitude = Quaternion<float>::FromEuler123_RPY(rollEst, pitchEst, curState(6));
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
-
-
+  V3F accelBtoI = attitude.Rotate_BtoI(accel) + V3F (0.0, 0.0, -CONST_GRAVITY);
+  predictedState(0) = predictedState(0) + predictedState(3) * dt;
+  predictedState(1) = predictedState(1) + predictedState(4) * dt;
+  predictedState(2) = predictedState(2) + predictedState(5) * dt;
+  predictedState(3) = predictedState(3) + accelBtoI.x * dt;
+  predictedState(4) = predictedState(4) + accelBtoI.y * dt;
+  predictedState(5) = predictedState(5) + accelBtoI.z * dt;
+    
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
   return predictedState;
@@ -217,8 +220,12 @@ MatrixXf QuadEstimatorEKF::GetRbgPrime(float roll, float pitch, float yaw)
   //   that your calculations are reasonable
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
-
-
+  RbgPrime(0,0) = - cos(pitch) * sin(yaw);
+  RbgPrime(0,1) = -sin(roll) * sin(pitch) * sin(yaw) - cos(roll) * cos(yaw);
+  RbgPrime(0,2) =  -cos(roll) * sin(pitch) * sin(yaw) + sin(roll) * cos(yaw);
+  RbgPrime(1,0) = cos(pitch) * cos(yaw);
+  RbgPrime(1,1) = sin(roll) * sin(pitch) * cos(yaw) - cos(roll) * sin(yaw);
+  RbgPrime(1,2) = cos(roll) * sin(pitch) * cos(yaw) + sin(roll) * sin(yaw);
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
   return RbgPrime;
@@ -257,14 +264,21 @@ void QuadEstimatorEKF::Predict(float dt, V3F accel, V3F gyro)
 
   // we'll want the partial derivative of the Rbg matrix
   MatrixXf RbgPrime = GetRbgPrime(rollEst, pitchEst, ekfState(6));
-
+  
   // we've created an empty Jacobian for you, currently simply set to identity
   MatrixXf gPrime(QUAD_EKF_NUM_STATES, QUAD_EKF_NUM_STATES);
   gPrime.setIdentity();
-
+    
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
-
-
+  gPrime(0, 3) = dt;
+  gPrime(1, 4) = dt;
+  gPrime(2, 5) = dt;
+  gPrime(3, 6) = (RbgPrime(0, 0) * accel.x + RbgPrime(0, 1) * accel.y + RbgPrime(0, 2) * accel.z) * dt;
+  gPrime(4, 6) = (RbgPrime(1, 0) * accel.x + RbgPrime(1, 1) * accel.y + RbgPrime(1, 2) * accel.z) * dt;
+  gPrime(5, 6) = (RbgPrime(2, 0) * accel.x + RbgPrime(2, 1) * accel.y + RbgPrime(2, 2) * accel.z) * dt;
+  gPrime(6, 6) = 1;
+    
+  ekfCov = gPrime * ekfCov * gPrime.transpose() + Q;
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
   ekfState = newState;
