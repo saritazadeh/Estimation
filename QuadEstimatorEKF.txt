@@ -9,7 +9,7 @@ QPosXYStd = 0.09 #.05
 QPosZStd = .05
 QVelXYStd = 0.07 #.05
 QVelZStd = 0.1
-QYawStd = .05
+QYawStd = 0.08 #.05
 
 # GPS measurement std deviations
 GPSPosXYStd = 1
