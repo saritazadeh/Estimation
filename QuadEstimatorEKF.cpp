@@ -98,7 +98,7 @@ void QuadEstimatorEKF::UpdateFromIMU(V3F accel, V3F gyro)
   //ekfState(6) = ekfState(6) + dtIMU * gyro.z;	// yaw
   float p = pitchEst;
   float r = rollEst;
-  //float y = ekfState(6);
+ 
   Mat3x3F R;
   R(0,0) = 1;
   R(1,0)= 0;
@@ -109,20 +109,12 @@ void QuadEstimatorEKF::UpdateFromIMU(V3F accel, V3F gyro)
   R(0,2) = cos(r) * tan(p);
   R(1,2) = -sin(r);
   R(2,2) = cos(r) / cos(p);
-  //calculate quaternion from Euler angles
-  //Quaternion<float> qt = Quaternion<float>::FromEuler123_RPY(rollEst, pitchEst, ekfState(6));
-  //transfer angular rate to body frame
   V3F euler_dot = R * gyro;
-  
-  //Quaternion<float> dq = qt.IntegrateBodyRate(gyro, dtIMU);
-  
-  //Quaternion<float> q_bar_t = dq * qt;
     
   float predictedPitch = pitchEst + euler_dot.y * dtIMU;
   float predictedRoll = rollEst + euler_dot.x * dtIMU;
   ekfState(6) = ekfState(6) + euler_dot.z * dtIMU;
-    
-    
+
   // normalize yaw to -pi .. pi
   if (ekfState(6) > F_PI) ekfState(6) -= 2.f*F_PI;
   if (ekfState(6) < -F_PI) ekfState(6) += 2.f*F_PI;
@@ -295,14 +287,21 @@ void QuadEstimatorEKF::UpdateFromGPS(V3F pos, V3F vel)
   z(5) = vel.z;
 
   MatrixXf hPrime(6, QUAD_EKF_NUM_STATES);
-  hPrime.setZero();
+  //hPrime.setZero();
 
   // GPS UPDATE
   // Hints: 
   //  - The GPS measurement covariance is available in member variable R_GPS
   //  - this is a very simple update
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
-
+  hPrime.setIdentity();
+  
+  zFromX(0) = ekfState(0);
+  zFromX(1) = ekfState(1);
+  zFromX(2) = ekfState(2);
+  zFromX(3) = ekfState(3);
+  zFromX(4) = ekfState(4);
+  zFromX(5) = ekfState(5);
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
   Update(z, hPrime, R_GPS, zFromX);
